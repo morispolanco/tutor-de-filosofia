@@ -1,5 +1,5 @@
 {
-  "name": "Filósofo AI: Tu Tutor de Filosofía",
-  "description": "Una aplicación de chat interactiva que actúa como un tutor de filosofía personal. Ayuda a los usuarios a aprender a pensar y escribir como filósofos, y a comprender teorías y autores complejos a través de un diálogo guiado y alentador.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }
