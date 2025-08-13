@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import PaperPlaneIcon from './icons/PaperPlaneIcon';
 import MicrophoneIcon from './icons/MicrophoneIcon';
 import StopIcon from './icons/StopIcon';
+import { correctText } from '../services/geminiService';
 
 // Define SpeechRecognition types for window object to avoid TypeScript errors.
 // These interfaces are based on the Web Speech API specification.
@@ -64,7 +66,10 @@ interface ChatInputProps {
 const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
   const [inputValue, setInputValue] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isCorrecting, setIsCorrecting] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const inputValueRef = useRef(inputValue);
+  inputValueRef.current = inputValue;
 
   const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
   const isSpeechSupported = !!SpeechRecognitionAPI;
@@ -84,16 +89,26 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
       setIsRecording(true);
     };
 
-    recognition.onend = () => {
+    recognition.onend = async () => {
       setIsRecording(false);
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
+      const transcript = inputValueRef.current.trim();
+      if (transcript) {
+        setIsCorrecting(true);
+        try {
+          const corrected = await correctText(transcript);
+          setInputValue(corrected);
+        } catch (e) {
+          console.error("Failed to correct text:", e);
+        } finally {
+          setIsCorrecting(false);
+        }
       }
     };
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
       setIsRecording(false);
+      setIsCorrecting(false);
     };
 
     recognition.onresult = (event) => {
@@ -109,10 +124,11 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     return () => {
       recognitionRef.current?.stop();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSpeechSupported]);
 
   const handleMicClick = () => {
-    if (isLoading || !isSpeechSupported) return;
+    if (isLoading || isCorrecting || !isSpeechSupported) return;
 
     if (isRecording) {
       recognitionRef.current?.stop();
@@ -122,14 +138,21 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     }
   };
 
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputValue.trim() && !isLoading) {
+    if (inputValue.trim() && !isLoading && !isCorrecting) {
       onSendMessage(inputValue.trim());
       setInputValue('');
     }
   };
+
+  const isBusy = isLoading || isCorrecting;
+
+  const getPlaceholderText = () => {
+    if (isRecording) return "Escuchando...";
+    if (isCorrecting) return "Corrigiendo texto...";
+    return "Escribe tu pregunta o reflexión aquí...";
+  }
 
   return (
     <form onSubmit={handleSubmit} className="flex items-center gap-3 p-4 bg-white/50 backdrop-blur-sm rounded-t-xl border-t border-gray-200">
@@ -142,26 +165,32 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
                 handleSubmit(e);
             }
         }}
-        placeholder={isRecording ? "Escuchando..." : "Escribe tu pregunta o reflexión aquí..."}
+        placeholder={getPlaceholderText()}
         className="w-full p-3 bg-[#FDF6E3] border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#07575B] focus:outline-none resize-none transition-shadow duration-200"
         rows={1}
-        disabled={isLoading}
+        disabled={isBusy}
         style={{ minHeight: '44px', maxHeight: '200px' }}
       />
       {isSpeechSupported && (
         <button
           type="button"
           onClick={handleMicClick}
-          disabled={isLoading}
+          disabled={isBusy}
           className={`p-3 h-[44px] w-[44px] rounded-full text-white ${isRecording ? 'bg-red-500 hover:bg-red-600 animate-pulse' : 'bg-[#07575B] hover:bg-[#003B46]'} disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200 flex-shrink-0 flex items-center justify-center`}
-          aria-label={isRecording ? 'Detener grabación' : 'Iniciar grabación de voz'}
+          aria-label={isRecording ? 'Detener grabación' : isCorrecting ? 'Corrigiendo texto' : 'Iniciar grabación de voz'}
         >
-          {isRecording ? <StopIcon className="w-5 h-5" /> : <MicrophoneIcon className="w-5 h-5" />}
+          {isCorrecting ? (
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          ) : isRecording ? (
+            <StopIcon className="w-5 h-5" />
+          ) : (
+            <MicrophoneIcon className="w-5 h-5" />
+          )}
         </button>
       )}
       <button
         type="submit"
-        disabled={isLoading || !inputValue.trim()}
+        disabled={isBusy || !inputValue.trim()}
         className="p-3 h-[44px] w-[44px] rounded-full text-white bg-[#07575B] hover:bg-[#003B46] disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors duration-200 flex-shrink-0 flex items-center justify-center"
         aria-label="Enviar mensaje"
       >
